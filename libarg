@@ -1,0 +1,381 @@
+#!/usr/bin/env bash
+
+bpm::include assign
+bpm::include is
+
+# Retrieves a single argument from the list of arguments.  It's similar to
+# `arg::getOption`, except it only returns non-options that were passed to a
+# function.
+#
+# $1    - Name of the variable that should get the result.
+# $2    - Index of the non-option argument, starting with 0.
+# $3-$@ - Command line arguments to parse.  Typically you use `"$0"` here.
+#
+# Examples
+#
+#   # Get the first non-option and place it into $name
+#   # If the argument does not exist, sets $name to ""
+#   arg::getArgument name 0 "$@"
+#
+# Returns errors if any other functions generate them.
+arg::getArgument() {
+    local args index target
+
+    target=$1
+    shift
+    index=$1
+    shift
+    arg::getArguments args "$@" || return $?
+
+    local "$target" && assign::value "$target" "${args[$index]-}"
+}
+
+
+# Grab all non-option arguments and return them as an array.
+#
+# $1    - Name of variable that should receive the result.
+# $2-$@ - Command line arguments to parse.  Typically this is `"$@"`.
+#
+# Examples
+#
+#   # Any non-option arguments are placed into $arguments.
+#   # If there were none, $arguments is set to an empty list.
+#   arg::getArguments arguments "$@"
+#
+# Returns nothing.
+arg::getArguments() {
+    local args prefix target
+
+    args=()
+    target=$1
+    prefix="-"
+    shift
+
+    while [[ $# -gt 0 ]]; do
+        if [[ "${1:0:1}" != "$prefix" ]]; then
+            args[${#args[@]}]=$1
+        elif [[ "$1" == "--" ]]; then
+            #: Longer than 1 char, so can't ever match.
+            prefix="XX"
+        fi
+
+        shift
+    done
+
+    # shellcheck disable=SC2068
+    local "$target" && assign::array "$target" ${args[@]+"${args[@]}"}
+}
+
+
+# Retrieve a named option from the list of arguments.
+#
+# $1    - Name of variable where the value will be stored.
+# $2    - Option's name.  May have leading hyphens (eg. `--option-name` and
+#         `option-name` are both valid).
+# $3-$@ - Arguments to parse.  Typically this is `"$@"`.
+#
+# This splits up single-hyphen options. Thus, if `-abc` goes in, it is treated
+# as `-a` and `-b` and `-c` individually.
+#
+# Examples
+#
+#   # If --verbose=XYZ is passed, $verboseOption will be set to "XYZ".
+#   # If --verbose= is passed (empty value), $verboseOption is set to "".
+#   # If --verbose is passed without a value, $verboseOption is set to "true".
+#   # If --verbose is not passed at all, $verboseOption is set to "".
+#   arg::getOption verboseOption verbose "$@"
+#
+#   # Split single-hyphen options:
+#   # Assuming that -abc is passed in ...
+#   arg::getOption letterC c "$@"
+#   arg::getOption letterD d "$@"
+#   echo "$letterC" # Echos "true"
+#   echo "$letterD" # Echos nothing
+#
+# Returns nothing.
+arg::getOption() {
+    local arg name target returnValue value
+
+    target="$1"
+    name="$2"
+    shift 2
+
+    while [[ "${name:0:1}" == "-" ]]; do
+        name="${name:1}"
+    done
+
+    returnValue=""
+    arg::safeName name "$name" || return $?
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --)
+                # End of processing options.
+                break
+                ;;
+
+            --*)
+                #: Long option
+                value=true
+                arg=${1:2}
+
+                if [[ "$arg" == *=* ]]; then
+                    value=${arg#*=}
+                    arg=${arg%%=*}
+                fi
+
+                arg::safeName arg "$arg" || return $?
+
+                if [[ "$arg" == "$name" ]]; then
+                    returnValue="$value"
+                fi
+                ;;
+
+            -*)
+                #: Short option
+                arg="${1:1}"
+
+                while [[ -n "$arg" ]]; do
+                    if [[ "${arg:0:1}" == "$name" ]]; then
+                        returnValue=true
+                    fi
+
+                    arg="${arg:1}"
+                done
+                ;;
+        esac
+
+        shift
+    done
+
+    local "$target" && assign::value "$target" "$returnValue"
+}
+
+
+# Get all options from a list of arguments and return a list without any
+# processing.
+#
+# $1    - Name of variable where the array will be stored.
+# $2-$@ - Arguments that are to be parsed.  Typically this is `"$@"`.
+#
+# This does not split up single-hyphen options. That's because the purpose
+# of this function is to simply extract all options from a list of
+# arguments that were passed to a function.
+#
+# Examples:
+#
+#   arg::getOptions opts "$@"
+#   # $opts is now a list of all options that were passed to the script.
+#   # $opts is unprocessed, so "-abc" would still be kept as "-abc" instead
+#   # of converting to "-a", "-b", and "-c".
+#
+# Returns nothing.
+arg::getOptions() {
+    local options prefix target
+
+    options=()
+    target=$1
+    prefix="-"
+    shift
+
+    while [[ $# -gt 0 ]]; do
+        if [[ "${1:0:1}" == "$prefix" ]]; then
+            if [[ "$1" == "--" ]]; then
+                #: Longer than 1 char, so can't ever match.
+                prefix="XX"
+            else
+                options[${#options[@]}]=$1
+            fi
+        fi
+
+        shift
+    done
+
+    # shellcheck disable=SC2068
+    local "$target" && assign::array "$target" ${options[@]+"${options[@]}"}
+}
+
+
+# Confirm that there's a specific number of arguments and that those
+# arguments are not empty. Options are not counted.
+#
+# $1    - Number of elements that are required.
+# $2-$@ - Command line arguments to parse.  Typically this is `"$@"`.
+#
+# Examples
+#
+#   # Ensure the $@ has 4 non-empty arguments.
+#   arg::requireArguments 4 "$@"
+#
+#   # This would fail the test and return 1 because the second argument is
+#   # empty.
+#   array=(first "" third)
+#   arg::requireArguments 3 "${array[@]}"
+#
+#   # This one requires exactly two arguments, which is correct. The options
+#   # are ignored.
+#   array=(--option1=value --option2 argument1 --option2=again argument2)
+#   arg::requireArguments 2 "${array[@]}"
+#
+# Returns true (0) if arguments are present and have non-empty values, 1 if
+# not. If incorrect arguments are passed, this returns 2.
+arg::requireArguments() {
+    local args count
+
+    arg::getArgument count 0 "$@" || return $?
+
+    if [[ -z "$count" ]] || [[ "$count" -lt 0 ]]; then
+        return 2
+    fi
+
+    arg::getArguments args "$@" || return $?
+
+    #: Add 1 to the count in order to compensate for the count itself.
+    count=$((count + 1))
+
+    if [[ "${#args[@]}" -ne "$count" ]]; then
+        return 1
+    fi
+
+    for arg in "${args[@]}"; do
+        if [[ -z "$arg" ]]; then
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+
+# Guarantee that some options are passed to a script.  This is typically used
+# within a role or a formula's `run` or `depends` script.  The error reporter
+# can be overridden so the library function can be used in external scripts as
+# well.  If any options are missing, this function returns an error status
+# code and calls `arg::requireOptionsFailure` once for each missing argument.
+#
+# $1-$x - Required option names. Leading hyphens may be omitted.
+# --    - A double hyphen separates the required options from the argument
+#         list.
+# $y-$@ - The list of arguments.  Typically this is `"$@"`.
+#
+# Examples
+#
+#   # Test to make sure this function or file received both
+#   # "access-key" and "secret-key"
+#   arg::requireOptions --access-key --secret-key -- "$@"
+#
+#   # Same as above - you may include or exclude the leading hyphens before
+#   # the required options. You still need to use "--" to separate the two
+#   # lists.
+#   arg::requireOptions access-key secret-key -- "$@"
+#
+#   # Use your own reporter and make sure that both --mom and --dad are set.
+#   # This would get called once for each option that is missing.
+#   missingOption() {
+#       echo "Hey, you need to specify --$1 as an argument"
+#   }
+#   ARG_REQUIRE_OPTIONS_FAILURE=mmissingOption \
+#       arg::requireOptions --mom --dad -- "$@"
+#
+# Returns zero if options exist, one if they do not.
+arg::requireOptions() {
+    local arg result seeking value
+
+    seeking=()
+    result=0
+
+    while [[ $# -gt 0 ]] && [[ "$1" != "--" ]]; do
+        arg="$1"
+
+        # Remove hyphens
+        while [[ "${arg:0:1}" == "-" ]]; do
+            arg="${arg:1}"
+        done
+
+        seeking[${#seeking[@]}]=$arg
+        shift
+    done
+
+    if [[ ${#seeking[@]} -eq 0 ]]; then
+        # No arguments are required
+        return 0
+    fi
+
+    shift
+
+    for arg in "${seeking[@]}"; do
+        value=""
+        arg::getOption value "$arg" "$@" || return $?
+
+        if [[ -z "$value" ]]; then
+            arg::requireOptionsFailure "$arg"
+            result=1
+        fi
+    done
+
+    return $result
+}
+
+
+# Default failure reporter for `arg::requireOptions`. Override this function
+# with one of your own or set `$ARG_REQUIRE_OPTIONS_FAILURE` to call another
+# function.
+#
+# $1                           - Option that was not specified.
+# $ARG_REQUIRE_OPTIONS_FAILURE - Alternate function or command to call with
+#                                the same arguments as was passed to this
+#                                function.
+#
+# Returns nothing.
+arg::requireOptionsFailure() {
+    local message
+
+    printf -v message $"Missing required option: --%s" "$1"
+
+    if [[ -n "${ARG_REQUIRE_OPTIONS_FAILURE-}" ]]; then
+        "$ARG_REQUIRE_OPTIONS_FAILURE" "$1"
+    elif is::function log::error; then
+        # Soft dependency on log library. Use it when it is available.
+        log::error "$message"
+    else
+        echo "$message" >&2
+    fi
+}
+
+
+# Change a string so it is a valid variable name in Bash.
+#
+# $1 - Name of the variable that should receive the altered string.
+# $2 - The string we are making safe.
+#
+# You can't use variables like `$ABC-DEF` because the hyphen is invalid
+# for a variable's name. This function will turn the hyphen and other invalid
+# characters into an underscore. This is a one-way transform because it maps
+# all invalid characters to an underscore and there's no way to determine
+# what the original character was.
+#
+# Some extensive testing was done for `tomdoc.sh` and Bash variable names
+# can have a leading character of `[A-Za-z_]`, while subsequent characters can
+# be `[A-Za-z0-9=_]`.
+#
+# Examples
+#
+#   arg::safeName fixed "ABC-DEF"
+#   # $fixed is "ABC_DEF"
+#
+# Returns nothing.
+arg::safeName() {
+    local safe
+
+    safe="$2"
+
+    if [[ "$safe" =~ ^[^A-Za-z_] ]]; then
+        safe="_${safe:1}"
+    fi
+
+    while [[ "$safe" =~ [^A-Za-z0-9=_] ]]; do
+        safe=${safe//${BASH_REMATCH[0]}/_}
+    done
+
+    local "$1" && assign::value "$1" "$safe"
+}

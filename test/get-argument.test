@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+. bpm
+bpm::include unittest
+unittest::run
+
+unittest::setup() {
+    . ../libarg
+}
+
+unittest::case::first-argument() {
+    local result
+
+    result=unchanged
+    arg::getArgument result 0 one two three
+    [[ "$result" == "one" ]]
+}
+
+unittest::case::last-argument() {
+    local result
+
+    result=unchanged
+    arg::getArgument result 1 one two
+    [[ "$result" == "two" ]]
+}
+
+unittest::case::no-arguments() {
+    local result
+
+    result=unchanged
+    arg::getArgument result 0
+    [[ "$result" == "" ]]
+}
+
+unittest::case::beyond-end() {
+    local result
+
+    result=unchange
+    arg::getArgument result 10 one two three
+    [[ "$result" == "" ]]
+}

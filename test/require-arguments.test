@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+. bpm
+bpm::include unittest
+unittest::run
+
+unittest::setup() {
+    . ../libarg
+}
+
+unittest::case::zero-arguments-ok() {
+    arg::requireArguments 0
+}
+
+unittest::case::zero-arguments-fail() {
+    ! arg::requireArguments 0 asdf
+}
+
+unittest::case::three-arguments-ok() {
+    arg::requireArguments 3 --not-argument --option one --something= two three
+}
+
+unittest::case::too-few() {
+    ! arg::requireArguments 3 --one two three
+}

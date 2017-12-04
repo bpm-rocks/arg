@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+. bpm
+bpm::include unittest
+unittest::run
+
+unittest::setup() {
+    . ../libarg
+}
+
+unittest::case::no-arguments() {
+    local result
+
+    result=unchanged
+    arg::getArguments result
+    [[ "${#result[@]}" == 0 ]]
+}
+
+unittest::case::arguments() {
+    local result
+
+    result=unchanged
+    arg::getArguments result one two three
+    [[ "${#result[@]}" == 3 ]] || return 1
+    [[ "${result[*]}" == "one two three" ]]
+}
+
+unittest::case::mixed-with-options() {
+    local result
+
+    result=unchanged
+    arg::getArguments result --aaa -bc ddd --ee=fff ggg -- --hh -ij --kk=ll
+    [[ "${#result[@]}" == 5 ]] || return 1
+    [[ "${result[*]}" == "ddd ggg --hh -ij --kk=ll" ]]
+}

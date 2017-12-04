@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+. bpm
+bpm::include unittest
+unittest::run
+
+unittest::setup() {
+    . ../libarg
+}
+
+unittest::case::matching-option() {
+    local result
+
+    result=unchanged
+    arg::getOption result test --one --test --two
+    [[ "$result" == "true" ]]
+}
+
+unittest::case::matching-option-with-value() {
+    local result
+
+    result=unchanged
+    arg::getOption result test --one --test=val --two
+    [[ "$result" == "val" ]]
+}
+
+unittest::case::matching-option-duplicate() {
+    local result
+
+    result=unchanged
+    arg::getOption result test --one --test=val --two --test=override
+    [[ "$result" == "override" ]]
+}
+
+unittest::case::missing() {
+    local result
+
+    result=unchanged
+    arg::getOption result test --one --two
+    [[ "$result" == "" ]]
+}
+
+unittest::case::no-arguments() {
+    local result
+
+    result=unchanged
+    arg::getOption result test
+    [[ "$result" == "" ]]
+}
+
+unittest::case::matches-hyphens-with-underscores() {
+    local result
+
+    result=unchanged
+    arg::getOption result --with-hyphens --blah --with_hyphens
+    [[ "$result" == "true" ]]
+}

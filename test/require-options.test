@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+. bpm
+bpm::include unittest
+unittest::run
+
+testFailure() {
+    FAILURE_CALLS=$((FAILURE_CALLS + 1))
+}
+
+unittest::setup() {
+    . ../libarg
+    ARG_REQUIRE_OPTIONS_FAILURE=testFailure
+    FAILURE_CALLS=0
+    export ARG_REQUIRE_OPTIONS_FAILURE FAILURE_CALLED
+}
+
+unittest::case::require-options() {
+    arg::requireOptions --one --two --three -- --three --two -blah --one || return 1
+
+    return "$FAILURE_CALLS"
+}
+
+unittest::case::single-letter-options() {
+    arg::requireOptions --b -c -- -aaaabaa --c || return 1
+
+    return "$FAILURE_CALLS"
+}
+
+unittest::case::missing-two() {
+    arg::requireOptions --one --two --three --four -- --one --three && return 1
+    [[ "$FAILURE_CALLS" -eq 2 ]]
+}

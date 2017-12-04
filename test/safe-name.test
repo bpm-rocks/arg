@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+. bpm
+bpm::include unittest
+unittest::run
+
+unittest::setup() {
+    . ../libarg
+}
+
+unittest::no-change() {
+    local result
+
+    result=unchanged
+    arg::safeName result "pigglyWiggly"
+    [[ "$result" == "pigglyWiggly" ]]
+}
+
+unittest::case::strip-invalids() {
+    local result
+
+    result=unchanged
+    arg::safeName result "A big, super-fat m0n5t3r!"
+    [[ "$result" == "A_big__super_fat_m0n5t3r_" ]]
+}
+
+unittest::case::no-leading-numbers() {
+    local result
+
+    result=unchanged
+    arg::safeName result "12345"
+    [[ "$result" == "_2345" ]]
+}
