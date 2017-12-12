@@ -57,10 +57,10 @@ Normally one would use `$1` to get the first argument. When you start processing
 
     # Get the first non-option argument and save it as $source.
     # Get the second non-option argument and save it as $destination.
-    arg::getArgument $source 0 "$@"
-    arg::getArgument $destination 1 "$@"
+    arg::getArgument source 0 "$@"
+    arg::getArgument destination 1 "$@"
 
-Please be careful! The indexing on this command starts at zero. So, in the example above, you may normally say `$1` for `$source` and instead `arg::getArgument` uses index `0`.
+Please be careful! First, notice that we are passing `source` and `destination` instead of `$source` and `$destination`. Also, the indexing on this command starts at zero. So, in the example above, you may normally say `$1` for `$source` and instead `arg::getArgument` uses index `0`.
 
 If there are not enough arguments in `$@` then the variable is set to an empty string.
 
